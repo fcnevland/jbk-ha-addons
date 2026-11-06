@@ -1,0 +1,13 @@
+configuration:
+  dashboard_api:
+    name: Adres van het portaal
+    description: Laat dit staan op https://mijn.keukenadviesaanhuis-assen.nl
+  robot_sleutel:
+    name: Robotsleutel
+    description: Maak je in het dashboard onder Bestellingen → Bestelrobot (begint met jbr_).
+  melding_service:
+    name: Meldingsdienst
+    description: Bijvoorbeeld notify.mobile_app_iphone_van_johnny. Leeg laten = geen pushberichten.
+  interval_seconden:
+    name: Elke hoeveel seconden kijken
+    description: Hoe vaak de robot vraagt of er goedgekeurde bestellingen klaarstaan (standaard 60).
