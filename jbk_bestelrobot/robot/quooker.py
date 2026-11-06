@@ -43,10 +43,18 @@ def postcode(s):
     return re.sub(r"\s+", "", str(s or "")).upper()
 
 
+async def is_ingelogd(page):
+    """Ingelogd = op de dealerwebshop en het accountmenu (Uitloggen / Mijn bestellingen) staat in de pagina."""
+    if "dealerwebshop.quooker.nl" not in page.url:
+        return False
+    html = await page.content()
+    return ("Uitloggen" in html or "Mijn bestellingen" in html) and "type=\"password\"" not in html
+
+
 async def ingelogd(page, kluis):
     """Zorgt dat de browser is ingelogd. Gebruikt de opgeslagen gegevens als het nodig is."""
     await page.goto(f"{BASIS}/nl/shoppingcart", wait_until="domcontentloaded", timeout=45000)
-    if "dealerwebshop.quooker.nl" in page.url and await page.locator("text=Winkelwagen").count():
+    if await is_ingelogd(page):
         return True
     gegevens = (kluis or {}).get("quooker") or {}
     if not gegevens.get("email") or not gegevens.get("wachtwoord"):
@@ -64,6 +72,11 @@ async def ingelogd(page, kluis):
     await page.locator("button[type=submit], button[name=action]").first.click()
     try:
         await page.wait_for_url(re.compile(r"dealerwebshop\.quooker\.nl"), timeout=45000)
+        await page.wait_for_load_state("domcontentloaded")
+        if not await is_ingelogd(page):
+            await page.goto(f"{BASIS}/nl/shoppingcart", wait_until="domcontentloaded", timeout=45000)
+            if not await is_ingelogd(page):
+                raise RuntimeError("na inloggen niet herkend")
     except Exception:
         tekst = (await page.inner_text("body"))[:300]
         if re.search(r"captcha|robot", tekst, re.I):
@@ -229,4 +242,7 @@ async def prijzen(page, kluis):
           return lijst;
         }"""
     )
+    if len(lijst) < 5:
+        tekst = (await page.inner_text("body"))[:200].replace("\n", " ")
+        raise RuntimeError(f"maar {len(lijst)} artikelen gevonden op {page.url} ({await page.title()}): {tekst}")
     return lijst
