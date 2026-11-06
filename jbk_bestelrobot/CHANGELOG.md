@@ -9,3 +9,6 @@
 
 ## 0.1.3
 - Inloggen bij Quooker via Enter (eigen inlogformulier van de dealerwebshop), "Onthoud mij" aan, opnieuw proberen bij netwerkfoutjes direct na het opstarten.
+
+## 0.1.4
+- Quooker staat maar één sessie per account toe: bij bestellen/prijzen neemt de robot de sessie over ("Log andere sessie uit"), bij de dagelijkse inlogcontrole niet.
