@@ -1,0 +1,26 @@
+name: JBK Bestelrobot
+version: "0.1.0"
+slug: jbk_bestelrobot
+description: Plaatst goedgekeurde bestellingen uit het JBK-dashboard bij de webshops van leveranciers (eerst Quooker).
+url: https://dashboard.keukenadviesaanhuis-assen.nl/portaal/bestellingen
+arch:
+  - amd64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:cart-arrow-right
+panel_title: Bestelrobot
+homeassistant_api: true
+watchdog: "http://[HOST]:[PORT:8099]/gezond"
+options:
+  dashboard_api: "https://mijn.keukenadviesaanhuis-assen.nl"
+  robot_sleutel: ""
+  melding_service: "notify.notify"
+  interval_seconden: 60
+schema:
+  dashboard_api: url
+  robot_sleutel: password
+  melding_service: str
+  interval_seconden: "int(30,600)"
