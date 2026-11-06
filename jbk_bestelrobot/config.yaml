@@ -1,5 +1,5 @@
 name: JBK Bestelrobot
-version: "0.1.0"
+version: "0.1.1"
 slug: jbk_bestelrobot
 description: Plaatst goedgekeurde bestellingen uit het JBK-dashboard bij de webshops van leveranciers (eerst Quooker).
 url: https://dashboard.keukenadviesaanhuis-assen.nl/portaal/bestellingen
