@@ -62,8 +62,14 @@ async def is_ingelogd(page):
     return ("Uitloggen" in html or "Mijn bestellingen" in html) and "type=\"password\"" not in html
 
 
-async def ingelogd(page, kluis):
-    """Zorgt dat de browser is ingelogd. Gebruikt de opgeslagen gegevens als het nodig is."""
+class AndereSessie(Exception):
+    """Iemand anders (meestal Johnny in Chrome) is ingelogd; Quooker staat maar één sessie per account toe."""
+
+
+async def ingelogd(page, kluis, overnemen=True):
+    """Zorgt dat de browser is ingelogd. Gebruikt de opgeslagen gegevens als het nodig is.
+    Quooker staat maar één sessie per account toe. overnemen=True: de andere sessie uitloggen (bij bestellen/prijzen).
+    overnemen=False: stoppen met AndereSessie (bij de dagelijkse inlogcontrole, zodat Johnny niet steeds wordt uitgelogd)."""
     await ga_naar(page, f"{BASIS}/nl/shoppingcart")
     if await is_ingelogd(page):
         return True
@@ -88,6 +94,17 @@ async def ingelogd(page, kluis):
     except Exception:
         pass
     await ww.press("Enter")
+    # Melding "Andere sessie gevonden"?
+    try:
+        knop = page.get_by_role("button", name=re.compile("andere sessie uit", re.I)).first
+        await knop.wait_for(state="visible", timeout=6000)
+        if not overnemen:
+            raise AndereSessie("Er is al iemand anders ingelogd met dit Quooker-account (waarschijnlijk jij in Chrome).")
+        await knop.click()
+    except AndereSessie:
+        raise
+    except Exception:
+        pass  # geen melding: gewoon doorgaan
     try:
         await page.wait_for_url(re.compile(r"dealerwebshop\.quooker\.nl"), timeout=45000)
         await page.wait_for_load_state("domcontentloaded")
