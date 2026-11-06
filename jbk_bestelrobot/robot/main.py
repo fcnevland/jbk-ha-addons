@@ -24,7 +24,7 @@ from playwright.async_api import async_playwright
 
 import quooker
 
-VERSIE = "0.1.3"
+VERSIE = "0.1.4"
 DATA = os.environ.get("JBK_DATA", "/data")
 KLUIS = f"{DATA}/kluis.json"
 DAGBOEK = f"{DATA}/dagboek.json"
@@ -171,8 +171,11 @@ async def inlogcontrole(sessie, ctx):
     for naam, mod in LEVERANCIERS.items():
         page = await ctx.new_page()
         try:
-            await mod.ingelogd(page, lees(KLUIS, {}))
+            await mod.ingelogd(page, lees(KLUIS, {}), overnemen=False)
             uit[naam] = {"ok": True}
+        except quooker.AndereSessie:
+            # inloggegevens kloppen, maar iemand anders is ingelogd: niet overnemen, wel goed
+            uit[naam] = {"ok": True, "melding": "gegevens kloppen; jij was ingelogd, robot neemt de sessie pas over bij een bestelling"}
         except Exception as e:
             uit[naam] = {"ok": False, "melding": str(e)[:200]}
             await bewaar_debug(page)
