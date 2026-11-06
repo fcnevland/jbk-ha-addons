@@ -24,7 +24,7 @@ from playwright.async_api import async_playwright
 
 import quooker
 
-VERSIE = "0.1.0"
+VERSIE = "0.1.2"
 DATA = os.environ.get("JBK_DATA", "/data")
 KLUIS = f"{DATA}/kluis.json"
 DAGBOEK = f"{DATA}/dagboek.json"
@@ -107,6 +107,16 @@ async def schermafdruk(page):
         return ""
 
 
+async def bewaar_debug(page):
+    """Laatste screenshot bij een fout, te bekijken op het scherm van de add-on."""
+    try:
+        with open(f"{DATA}/laatste_fout.jpg", "wb") as f:
+            f.write(await page.screenshot(type="jpeg", quality=60, full_page=True))
+        staat["debug_t"] = dt.datetime.now().strftime("%d-%m %H:%M:%S")
+    except Exception:
+        pass
+
+
 # ---------------- Werk ----------------
 async def verwerk_order(sessie, ctx, order, instellingen):
     mod = LEVERANCIERS.get(order["leverancier"])
@@ -137,6 +147,7 @@ async def verwerk_order(sessie, ctx, order, instellingen):
     except Exception as e:
         logregel(traceback.format_exc()[-600:])
         uitkomst = {"resultaat": "mislukt" if dagboek.get(order["id"]) != "afronden" else "onzeker", "melding": f"Technische fout: {str(e)[:200]}", "screenshot": await schermafdruk(page)}
+        await bewaar_debug(page)
     finally:
         if uitkomst and uitkomst.get("resultaat") in ("controle", "mislukt"):
             try:
@@ -164,6 +175,7 @@ async def inlogcontrole(sessie, ctx):
             uit[naam] = {"ok": True}
         except Exception as e:
             uit[naam] = {"ok": False, "melding": str(e)[:200]}
+            await bewaar_debug(page)
         finally:
             await page.close()
     staat["inlog"] = uit
@@ -209,7 +221,8 @@ async def lus():
                                     r = await api(sessie, "POST", "/api/robot/prijzen", {"leverancier": lev, "artikelen": art})
                                     logregel(f"prijzen {lev}: {r}")
                                 except Exception as e:
-                                    logregel(f"prijzen {lev} mislukt: {e}")
+                                    logregel(f"prijzen {lev} mislukt: {str(e)[:400]}")
+                                    await bewaar_debug(page)
                                 finally:
                                     await page.close()
                         # inlogcontrole: bij de start en elke ochtend rond 7:30
@@ -242,6 +255,7 @@ def pagina(melding=""):
 <div class=k><h2>Quooker-dealerwebshop</h2><p>Inloggegevens worden alleen hier in Home Assistant bewaard (map van de add-on, ook in je back-ups). Ze gaan nooit naar het dashboard of naar Claude.</p>
 <form method=post action=kluis><input type=hidden name=lev value=quooker><label>E-mailadres</label><input name=email type=email value="{esc((k.get('quooker') or {}).get('email', ''))}" autocomplete=off>
 <label>Wachtwoord {'(opgeslagen; leeg laten = niet wijzigen)' if (k.get('quooker') or {}).get('wachtwoord') else ''}</label><input name=wachtwoord type=password autocomplete=new-password><button>Opslaan</button></form></div>
+{f"<div class=k><h2>Laatste fout ({staat['debug_t']})</h2><a href=laatste_fout.jpg target=_blank>Screenshot bekijken</a></div>" if staat.get('debug_t') else ''}
 <div class=k><h2>Logboek</h2><pre>{esc(chr(10).join(reversed(staat['log'][-40:])))}</pre></div></body></html>"""
 
 
@@ -282,6 +296,15 @@ async def start_web(app_state):
 
     app.router.add_get("/", alleen_ha(index))
     app.router.add_get("/gezond", gezond)
+
+    async def debugfoto(req):
+        try:
+            with open(f"{DATA}/laatste_fout.jpg", "rb") as f:
+                return web.Response(body=f.read(), content_type="image/jpeg")
+        except Exception:
+            return web.Response(status=404, text="geen screenshot")
+
+    app.router.add_get("/laatste_fout.jpg", alleen_ha(debugfoto))
     app.router.add_post("/kluis", alleen_ha(kluis))
     app.router.add_post("/controle", alleen_ha(controle))
     runner = web.AppRunner(app)
