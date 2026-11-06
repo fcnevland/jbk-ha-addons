@@ -16,6 +16,17 @@ BASIS = "https://dealerwebshop.quooker.nl"
 ZEKERHEID_EURO = 0.50  # maximaal verschil tussen prijslijst en webshop voordat de robot stopt
 
 
+async def ga_naar(page, url, pogingen=3):
+    """page.goto met herhaling: vlak na het starten van de add-on geeft het netwerk soms ERR_NETWORK_CHANGED."""
+    for i in range(pogingen):
+        try:
+            return await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        except Exception as e:
+            if i == pogingen - 1 or not re.search(r"ERR_NETWORK_CHANGED|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION|ERR_TIMED_OUT|Timeout", str(e)):
+                raise
+            await page.wait_for_timeout(5000 * (i + 1))
+
+
 class InlogFout(Exception):
     pass
 
@@ -53,7 +64,7 @@ async def is_ingelogd(page):
 
 async def ingelogd(page, kluis):
     """Zorgt dat de browser is ingelogd. Gebruikt de opgeslagen gegevens als het nodig is."""
-    await page.goto(f"{BASIS}/nl/shoppingcart", wait_until="domcontentloaded", timeout=45000)
+    await ga_naar(page, f"{BASIS}/nl/shoppingcart")
     if await is_ingelogd(page):
         return True
     gegevens = (kluis or {}).get("quooker") or {}
@@ -66,15 +77,22 @@ async def ingelogd(page, kluis):
     ww = page.locator("input[type=password]").first
     if not await ww.count() or not await ww.is_visible():
         # sommige inlogschermen vragen eerst alleen het e-mailadres
-        await page.locator("button[type=submit], button[name=action]").first.click()
+        await email.press("Enter")
         await ww.wait_for(timeout=15000)
     await ww.fill(gegevens["wachtwoord"])
-    await page.locator("button[type=submit], button[name=action]").first.click()
+    # "Onthoud mij" aanzetten, dan blijft de robot langer ingelogd
+    try:
+        onthoud = page.get_by_label(re.compile("onthoud", re.I)).first
+        if await onthoud.count() and not await onthoud.is_checked():
+            await onthoud.check(timeout=3000)
+    except Exception:
+        pass
+    await ww.press("Enter")
     try:
         await page.wait_for_url(re.compile(r"dealerwebshop\.quooker\.nl"), timeout=45000)
         await page.wait_for_load_state("domcontentloaded")
         if not await is_ingelogd(page):
-            await page.goto(f"{BASIS}/nl/shoppingcart", wait_until="domcontentloaded", timeout=45000)
+            await ga_naar(page, f"{BASIS}/nl/shoppingcart")
             if not await is_ingelogd(page):
                 raise RuntimeError("na inloggen niet herkend")
     except Exception:
@@ -103,7 +121,7 @@ async def zet_aantal(page, code, aantal):
 
 
 async def aantal_in_winkelwagen(page):
-    await page.goto(f"{BASIS}/nl/shoppingcart", wait_until="domcontentloaded", timeout=45000)
+    await ga_naar(page, f"{BASIS}/nl/shoppingcart")
     tekst = await page.inner_text("body")
     if re.search(r"winkelwagen is leeg", tekst, re.I):
         return 0, tekst
@@ -124,7 +142,7 @@ async def kies_adres(page, order):
     pc, straat = postcode(a.get("postcode")), str(a.get("straat") or "").strip()
     if not pc:
         raise Stop("Er is geen afleveradres ingevuld voor deze klant.", "controle")
-    await page.goto(f"{BASIS}/nl/customeraddressbook", wait_until="domcontentloaded", timeout=45000)
+    await ga_naar(page, f"{BASIS}/nl/customeraddressbook")
     huisnr = (re.findall(r"\d+\s*[A-Za-z]?", straat) or [""])[-1].replace(" ", "").lower()
     rijen = page.locator("tr")
     for i in range(await rijen.count()):
@@ -155,7 +173,7 @@ async def bestel(page, kluis, order, max_bedrag, schermafdruk):
         if n != verwacht_n:
             raise Stop(f"Winkelwagen bevat {n} artikelen in plaats van {verwacht_n}. Mogelijk is een artikelcode niet meer leverbaar.")
         # 3. Afrekenen invullen
-        await page.goto(f"{BASIS}/nl/shoppingcart/checkout", wait_until="domcontentloaded", timeout=45000)
+        await ga_naar(page, f"{BASIS}/nl/shoppingcart/checkout")
         adres = await kies_adres(page, order)
         ref = page.get_by_placeholder(re.compile("referentie", re.I)).first
         await ref.fill(order["referentie"][:30])
@@ -211,7 +229,7 @@ async def afronden(page, schermafdruk):
 async def prijzen(page, kluis):
     """Leest de hele dealerprijslijst uit de webshop (ex btw), met bestelcode (bijv. FNSSST) en EAN per artikel."""
     await ingelogd(page, kluis)
-    await page.goto(f"{BASIS}/nl/catalog", wait_until="domcontentloaded", timeout=45000)
+    await ga_naar(page, f"{BASIS}/nl/catalog")
     lijst = await page.evaluate(
         """async () => {
           function parse(doc){ return [...doc.querySelectorAll('input[type=number]')].map(inp => {
