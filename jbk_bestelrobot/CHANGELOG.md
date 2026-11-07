@@ -19,3 +19,6 @@
 ## 0.1.6
 - Verzenddatum op de afrekenpagina: "zo snel mogelijk" of de datum die de klant in het portaal/API kiest. Twijfel = stoppen met controle.
 - Afrekenpagina wordt bewaard (afrekenpagina.jpg/.html op het scherm van de add-on).
+
+## 0.1.7
+- "Bestelling afronden": eerste zichtbare knop, wacht tot de webshop echt doorgaat (max. 90 s), toont foutmeldingen en bewaart de pagina daarna (na_afronden.html).
