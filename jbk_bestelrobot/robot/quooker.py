@@ -161,15 +161,79 @@ async def kies_adres(page, order):
         raise Stop("Er is geen afleveradres ingevuld voor deze klant.", "controle")
     await ga_naar(page, f"{BASIS}/nl/customeraddressbook")
     huisnr = (re.findall(r"\d+\s*[A-Za-z]?", straat) or [""])[-1].replace(" ", "").lower()
-    rijen = page.locator("tr")
-    for i in range(await rijen.count()):
-        rij = rijen.nth(i)
-        t = await rij.inner_text()
-        if pc in postcode(t) and (not huisnr or huisnr in re.sub(r"\s+", "", t).lower()):
-            await rij.locator("button:has-text('Kies')").first.click()
-            await page.wait_for_url(re.compile(r"/shoppingcart/checkout"), timeout=30000)
-            return f"{straat}, {a.get('postcode')}"
+    # De tabel wordt na het laden van de pagina pas gevuld ("Laden..."): wachten tot er adressen staan
+    kies = "button:has-text('Kies'), a:has-text('Kies'), input[value='Kies']"
+    try:
+        await page.locator(f"tbody tr :is({kies})").first.wait_for(state="visible", timeout=30000)
+    except Exception:
+        pass
+    # Zoeken op postcode, zodat ook adressen buiten de eerste 25 regels zichtbaar worden
+    try:
+        zoek = page.locator("input[type=search]").first
+        if await zoek.count():
+            await zoek.fill(a.get("postcode") or "", timeout=5000)
+            await page.wait_for_timeout(1500)
+    except Exception:
+        pass
+    for poging in range(2):
+        rijen = page.locator("tbody tr")
+        for i in range(await rijen.count()):
+            rij = rijen.nth(i)
+            t = await rij.inner_text()
+            if pc in postcode(t) and (not huisnr or huisnr in re.sub(r"\s+", "", t).lower()):
+                await rij.locator(kies).first.click()
+                await page.wait_for_url(re.compile(r"/shoppingcart/checkout"), timeout=30000)
+                return f"{straat}, {a.get('postcode')}"
+        if poging == 0:
+            # misschien stond er een zoekfilter verkeerd: alles tonen en nog een keer
+            try:
+                await page.locator("input[type=search]").first.fill("", timeout=5000)
+                await page.evaluate("""() => { const s = document.querySelector("select[name$='_length']"); if (s) { s.value = s.options[s.options.length - 1].value; s.dispatchEvent(new Event('change', {bubbles: true})); } }""")
+            except Exception:
+                pass
+            await page.wait_for_timeout(2000)
     raise Stop(f"Het afleveradres {straat}, {a.get('postcode')} {a.get('plaats', '')} staat niet in je Quooker-adresboek. Vraag Quooker het toe te voegen, of laat bij jou afleveren.", "controle")
+
+
+async def kies_verzenddatum(page, datum):
+    """Vult "Voorkeur verzenddag vanuit magazijn Quooker" in (veld #preferred_delivery_date, jQuery-datepicker,
+    formaat dd-mm-jjjj, alleen-lezen, standaard = morgen = zo snel mogelijk). datum = "" of JJJJ-MM-DD.
+    Lukt het niet zeker, dan stopt de robot met 'controle' (er wordt dan niets besteld)."""
+    veld = page.locator("#preferred_delivery_date")
+    if not await veld.count():
+        if datum:
+            raise Stop(f"Het veld voor de verzenddag staat niet op de afrekenpagina; verzenddatum {datum} kon niet worden ingevuld.", "controle")
+        return "geen verzenddag-veld (Quooker kiest)"
+    standaard = await veld.input_value()
+    if not datum:
+        return f"zo snel mogelijk ({standaard})"
+    j, m, d = datum.split("-")
+    gewenst = f"{d}-{m}-{j}"
+    uit = await page.evaluate(
+        """(w) => { const e = document.getElementById('preferred_delivery_date'); const $ = window.jQuery;
+                   if ($ && $(e).datepicker) { $(e).datepicker('setDate', w); } else { e.value = w; }
+                   e.dispatchEvent(new Event('change', {bubbles: true})); return e.value; }""",
+        gewenst,
+    )
+    if uit != gewenst:
+        # datum ligt vóór de vroegst mogelijke dag (bijv. order te laat verwerkt): dan zo snel mogelijk
+        if uit and re.match(r"\d{2}-\d{2}-\d{4}$", uit) and (uit[6:] + uit[3:5] + uit[:2]) > (j + m + d):
+            return f"zo snel mogelijk ({uit}); gevraagde {gewenst} was al voorbij"
+        raise Stop(f"Verzenddag {gewenst} kon niet worden ingesteld (veld toont '{uit}').", "controle")
+    return gewenst
+
+
+async def bewaar_afrekenpagina(page):
+    """Bewaart HTML en screenshot van de afrekenpagina (te bekijken op het scherm van de add-on)."""
+    import os
+    data = os.environ.get("JBK_DATA", "/data")
+    try:
+        with open(f"{data}/afrekenpagina.html", "w") as f:
+            f.write(await page.content())
+        with open(f"{data}/afrekenpagina.jpg", "wb") as f:
+            f.write(await page.screenshot(type="jpeg", quality=60, full_page=True))
+    except Exception:
+        pass
 
 
 async def bestel(page, kluis, order, max_bedrag, schermafdruk):
@@ -194,6 +258,8 @@ async def bestel(page, kluis, order, max_bedrag, schermafdruk):
         adres = await kies_adres(page, order)
         ref = page.get_by_placeholder(re.compile("referentie", re.I)).first
         await ref.fill(order["referentie"][:30])
+        await bewaar_afrekenpagina(page)
+        verzenden = await kies_verzenddatum(page, order.get("verzenddatum") or "")
         op_rekening = page.get_by_text("Op rekening", exact=True).first
         await op_rekening.click()
         radio = page.locator("input[type=radio]:checked")
@@ -211,7 +277,7 @@ async def bestel(page, kluis, order, max_bedrag, schermafdruk):
         if abs(totaal - verwacht) > ZEKERHEID_EURO:
             return {"resultaat": "controle", "melding": f"Prijsverschil: webshop {totaal:.2f}, prijslijst {verwacht:.2f} (ex btw). Werk de prijslijst bij of bestel definitief.", "totaal": totaal, "screenshot": shot}
         if fase != "bestellen":
-            return {"resultaat": "controle", "melding": f"Proefmodus: winkelwagen en afrekenpagina staan klaar (referentie {order['referentie']}, afleveren: {adres}, op rekening).", "totaal": totaal, "screenshot": shot}
+            return {"resultaat": "controle", "melding": f"Proefmodus: winkelwagen en afrekenpagina staan klaar (referentie {order['referentie']}, afleveren: {adres}, verzenden: {verzenden}, op rekening).", "totaal": totaal, "screenshot": shot}
         if totaal > float(max_bedrag):
             return {"resultaat": "controle", "melding": f"Bedrag {totaal:.2f} is hoger dan het maximum van {float(max_bedrag):.2f}.", "totaal": totaal, "screenshot": shot}
         # 5. Definitief bestellen
