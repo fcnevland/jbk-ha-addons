@@ -291,22 +291,39 @@ async def bestel(page, kluis, order, max_bedrag, schermafdruk):
 
 
 async def afronden(page, schermafdruk):
-    """Klikt op 'Bestelling afronden' en leest het ordernummer. Alleen aanroepen na bestel() met resultaat 'klik'."""
-    knop = page.get_by_role("button", name=re.compile("Bestelling afronden", re.I)).last
+    """Klikt op 'Bestelling afronden' en leest het ordernummer. Alleen aanroepen na bestel() met resultaat 'klik'.
+    Er staan twee knoppen op de pagina (onderaan en in een balk); de eerste zichtbare wordt gebruikt."""
+    import os
+    knop = page.locator("#checkout-form button.checkout_submit:visible").first
     if not await knop.count():
-        knop = page.locator("text=Bestelling afronden").last
+        knop = page.get_by_role("button", name=re.compile("Bestelling afronden", re.I)).first
+    van = page.url
     await knop.click()
+    # wachten tot de pagina echt wegnavigeert van de afrekenpagina (de server kan even nodig hebben)
     try:
-        await page.wait_for_load_state("domcontentloaded", timeout=60000)
-        await page.wait_for_timeout(3000)
+        await page.wait_for_url(lambda u: "/shoppingcart/checkout" not in u or u != van, timeout=90000)
+    except Exception:
+        pass
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=30000)
+        await page.wait_for_timeout(2500)
+    except Exception:
+        pass
+    try:
+        with open(f"{os.environ.get('JBK_DATA', '/data')}/na_afronden.html", "w") as f:
+            f.write(page.url + "\n" + await page.content())
     except Exception:
         pass
     body = await page.inner_text("body")
     shot = await schermafdruk(page)
     m = re.search(r"(?:order|bestel)(?:nummer|nr\.?)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})", body, re.I)
-    if m or re.search(r"bedankt|orderbevestiging|bestelling is (ontvangen|geplaatst)", body, re.I):
+    if m or re.search(r"bedankt|orderbevestiging|bestelling is (ontvangen|geplaatst)|succesvol", body, re.I):
         return {"resultaat": "besteld", "ordernr": m.group(1) if m else "", "screenshot": shot}
-    return {"resultaat": "onzeker", "melding": "Na 'Bestelling afronden' kwam geen bevestiging in beeld.", "screenshot": shot}
+    if "/shoppingcart/checkout" in page.url:
+        fouten = await page.evaluate("""() => [...document.querySelectorAll('.alert-danger, .invalid-feedback, .error, .text-danger, [id$="-error"]')]
+            .map(e => e.innerText.trim()).filter(Boolean).join(' | ').slice(0, 300)""")
+        return {"resultaat": "onzeker", "melding": "Na 'Bestelling afronden' bleef de afrekenpagina staan" + (f": {fouten}" if fouten else " (geen foutmelding zichtbaar)") + ".", "screenshot": shot}
+    return {"resultaat": "onzeker", "melding": f"Na 'Bestelling afronden' kwam een onbekende pagina ({page.url[:80]}).", "screenshot": shot}
 
 
 async def prijzen(page, kluis):
