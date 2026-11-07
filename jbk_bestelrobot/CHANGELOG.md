@@ -12,3 +12,10 @@
 
 ## 0.1.4
 - Quooker staat maar één sessie per account toe: bij bestellen/prijzen neemt de robot de sessie over ("Log andere sessie uit"), bij de dagelijkse inlogcontrole niet.
+
+## 0.1.5
+- Adresboek van Quooker wordt na het laden pas gevuld: de robot wacht nu op de adressen en zoekt op postcode (ook voorbij de eerste 25 regels).
+
+## 0.1.6
+- Verzenddatum op de afrekenpagina: "zo snel mogelijk" of de datum die de klant in het portaal/API kiest. Twijfel = stoppen met controle.
+- Afrekenpagina wordt bewaard (afrekenpagina.jpg/.html op het scherm van de add-on).
