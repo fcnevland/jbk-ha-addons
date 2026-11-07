@@ -24,7 +24,7 @@ from playwright.async_api import async_playwright
 
 import quooker
 
-VERSIE = "0.1.4"
+VERSIE = "0.1.6"
 DATA = os.environ.get("JBK_DATA", "/data")
 KLUIS = f"{DATA}/kluis.json"
 DAGBOEK = f"{DATA}/dagboek.json"
@@ -308,6 +308,16 @@ async def start_web(app_state):
             return web.Response(status=404, text="geen screenshot")
 
     app.router.add_get("/laatste_fout.jpg", alleen_ha(debugfoto))
+
+    async def afrekenbestand(req):
+        naam = req.match_info["naam"]
+        try:
+            with open(f"{DATA}/afrekenpagina.{naam}", "rb") as f:
+                return web.Response(body=f.read(), content_type="image/jpeg" if naam == "jpg" else "text/plain")
+        except Exception:
+            return web.Response(status=404, text="nog niet beschikbaar")
+
+    app.router.add_get("/afrekenpagina.{naam:jpg|html}", alleen_ha(afrekenbestand))
     app.router.add_post("/kluis", alleen_ha(kluis))
     app.router.add_post("/controle", alleen_ha(controle))
     runner = web.AppRunner(app)
