@@ -24,7 +24,7 @@ from playwright.async_api import async_playwright
 
 import quooker
 
-VERSIE = "0.1.7"
+VERSIE = "0.1.8"
 DATA = os.environ.get("JBK_DATA", "/data")
 KLUIS = f"{DATA}/kluis.json"
 DAGBOEK = f"{DATA}/dagboek.json"
