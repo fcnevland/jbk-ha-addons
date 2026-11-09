@@ -22,3 +22,6 @@
 
 ## 0.1.7
 - "Bestelling afronden": eerste zichtbare knop, wacht tot de webshop echt doorgaat (max. 90 s), toont foutmeldingen en bewaart de pagina daarna (na_afronden.html).
+
+## 0.1.8
+- Na "Bestelling afronden" stuurt Quooker je terug naar een lege winkelwagen: dat telt nu als besteld (voorheen "onzeker", wat tot dubbel bestellen leidde).
