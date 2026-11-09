@@ -319,6 +319,10 @@ async def afronden(page, schermafdruk):
     m = re.search(r"(?:order|bestel)(?:nummer|nr\.?)\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,})", body, re.I)
     if m or re.search(r"bedankt|orderbevestiging|bestelling is (ontvangen|geplaatst)|succesvol", body, re.I):
         return {"resultaat": "besteld", "ordernr": m.group(1) if m else "", "screenshot": shot}
+    # Na een geslaagde bestelling stuurt Quooker je terug naar een lege winkelwagen (vastgesteld 7-11-2026;
+    # de orderbevestiging met ordernummer komt later per mail)
+    if re.search(r"/shoppingcart/?(\?|#|$)", page.url) and re.search(r"winkelwagen is leeg", body, re.I):
+        return {"resultaat": "besteld", "ordernr": "", "melding": "Geplaatst; het ordernummer staat in de orderbevestiging van Quooker (mail).", "screenshot": shot}
     if "/shoppingcart/checkout" in page.url:
         fouten = await page.evaluate("""() => [...document.querySelectorAll('.alert-danger, .invalid-feedback, .error, .text-danger, [id$="-error"]')]
             .map(e => e.innerText.trim()).filter(Boolean).join(' | ').slice(0, 300)""")
