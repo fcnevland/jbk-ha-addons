@@ -1,0 +1,10 @@
+name: JBK Thuisbrowser
+version: "0.1.0"
+slug: jbk_thuisbrowser
+description: Headless browser (Playwright MCP) voor Claude, voor e-Boekhouden via het vaste thuisadres. Alleen bereikbaar via de Cloudflare-tunnel, geen open poort.
+url: https://github.com/fcnevland/jbk-ha-addons
+arch:
+  - amd64
+init: false
+startup: application
+boot: auto
