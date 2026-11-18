@@ -240,6 +240,8 @@ async def bestel(page, kluis, order, max_bedrag, schermafdruk):
     """Voert één order uit. Geeft dict {resultaat, melding, totaal, ordernr, screenshot}."""
     fase = order["fase"]  # "vullen" (stopt vóór de laatste knop) of "bestellen"
     await ingelogd(page, kluis)
+    if fase == "bestellen" and await zoek_bestelling(page, order["referentie"]):
+        raise Stop(f"Referentie {order['referentie'][:30]} staat al in 'Mijn bestellingen' bij Quooker. De robot bestelt niet nog een keer; controleer of dit dezelfde bestelling is.", "controle")
     # 1. Winkelwagen moet leeg zijn (afgezien van eventuele restanten van deze order)
     await leeg_eigen_artikelen(page, order["regels"])
     n, _ = await aantal_in_winkelwagen(page)
@@ -328,6 +330,33 @@ async def afronden(page, schermafdruk):
             .map(e => e.innerText.trim()).filter(Boolean).join(' | ').slice(0, 300)""")
         return {"resultaat": "onzeker", "melding": "Na 'Bestelling afronden' bleef de afrekenpagina staan" + (f": {fouten}" if fouten else " (geen foutmelding zichtbaar)") + ".", "screenshot": shot}
     return {"resultaat": "onzeker", "melding": f"Na 'Bestelling afronden' kwam een onbekende pagina ({page.url[:80]}).", "screenshot": shot}
+
+
+async def zoek_bestelling(page, referentie, pogingen=1, wacht_s=30):
+    """Zoekt de referentie in 'Mijn bestellingen' (/nl/my/orders). Quooker verwerkt een bestelling soms traag:
+    de afrekenpagina blijft dan staan terwijl de order wel binnenkomt. Geeft {resultaat: besteld, ordernr} of None."""
+    ref = (referentie or "").strip()[:30]
+    if not ref:
+        return None
+    for i in range(pogingen):
+        try:
+            await ga_naar(page, f"{BASIS}/nl/my/orders")
+            try:
+                await page.locator("tbody tr").first.wait_for(state="visible", timeout=15000)
+            except Exception:
+                pass
+            await page.wait_for_timeout(1500)
+            rij = page.locator("tr", has_text=ref).first
+            if await rij.count():
+                tekst = await rij.inner_text()
+                m = re.search(r"\b(\d{6,8})\b", tekst)
+                return {"resultaat": "besteld", "ordernr": m.group(1) if m else "",
+                        "melding": "Geplaatst; bevestigd via 'Mijn bestellingen' bij Quooker."}
+        except Exception:
+            pass
+        if i < pogingen - 1:
+            await page.wait_for_timeout(wacht_s * 1000)
+    return None
 
 
 async def prijzen(page, kluis):

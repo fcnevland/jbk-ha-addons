@@ -125,7 +125,18 @@ async def verwerk_order(sessie, ctx, order, instellingen):
         return
     dagboek = lees(DAGBOEK, {})
     if dagboek.get(order["id"]) == "afronden":
-        await api(sessie, "POST", f"/api/robot/order/{order['id']}", {"resultaat": "onzeker", "melding": "De robot werd onderbroken tijdens het afronden."})
+        page = await ctx.new_page()
+        try:
+            await mod.ingelogd(page, lees(KLUIS, {}))
+            gevonden = await mod.zoek_bestelling(page, order["referentie"], pogingen=2)
+        except Exception:
+            gevonden = None
+        finally:
+            await page.close()
+        uitkomst = gevonden or {"resultaat": "onzeker", "melding": "De robot werd onderbroken tijdens het afronden en vond de bestelling (nog) niet in 'Mijn bestellingen'."}
+        await api(sessie, "POST", f"/api/robot/order/{order['id']}", {k: v for k, v in uitkomst.items() if v is not None})
+        dagboek[order["id"]] = uitkomst["resultaat"]
+        schrijf(DAGBOEK, dagboek)
         return
     staat["bezig"] = f"{order['referentie']} ({order['fase']})"
     logregel(f"order {order['referentie']}: {order['fase']}")
@@ -137,6 +148,12 @@ async def verwerk_order(sessie, ctx, order, instellingen):
             dagboek[order["id"]] = "afronden"
             schrijf(DAGBOEK, dagboek)
             r2 = await mod.afronden(page, schermafdruk)
+            if r2.get("resultaat") == "onzeker":
+                # Quooker verwerkt soms traag: tot ~5 minuten in 'Mijn bestellingen' kijken voordat het 'onzeker' blijft
+                logregel(f"order {order['referentie']}: afronden niet direct bevestigd, controle via Mijn bestellingen")
+                gevonden = await mod.zoek_bestelling(page, order["referentie"], pogingen=10, wacht_s=30)
+                if gevonden:
+                    r2 = {**r2, **gevonden}
             r = {**r, **r2}
         uitkomst = r
     except quooker.InlogFout as e:
@@ -148,6 +165,13 @@ async def verwerk_order(sessie, ctx, order, instellingen):
         logregel(traceback.format_exc()[-600:])
         uitkomst = {"resultaat": "mislukt" if dagboek.get(order["id"]) != "afronden" else "onzeker", "melding": f"Technische fout: {str(e)[:200]}", "screenshot": await schermafdruk(page)}
         await bewaar_debug(page)
+        if uitkomst["resultaat"] == "onzeker":
+            try:
+                gevonden = await mod.zoek_bestelling(page, order["referentie"], pogingen=10, wacht_s=30)
+                if gevonden:
+                    uitkomst = {**uitkomst, **gevonden}
+            except Exception:
+                pass
     finally:
         if uitkomst and uitkomst.get("resultaat") in ("controle", "mislukt"):
             try:

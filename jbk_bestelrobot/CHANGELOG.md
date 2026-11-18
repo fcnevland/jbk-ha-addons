@@ -25,3 +25,8 @@
 
 ## 0.1.8
 - Na "Bestelling afronden" stuurt Quooker je terug naar een lege winkelwagen: dat telt nu als besteld (voorheen "onzeker", wat tot dubbel bestellen leidde).
+
+## 0.1.9
+- Quooker verwerkt een bestelling soms traag: de afrekenpagina blijft dan staan terwijl de order wel binnenkomt (01-Blokzijl, 18-11-2026). De robot kijkt nu tot ~5 minuten in 'Mijn bestellingen' (/nl/my/orders) of de referentie erbij staat en meldt dan 'besteld' met ordernummer, zodat de klant meteen zijn bevestiging krijgt.
+- Voorcontrole: staat de referentie al in 'Mijn bestellingen', dan bestelt de robot niet nog een keer (geen dubbele bestellingen bij opnieuw proberen).
+- Na een onderbreking tijdens het afronden kijkt de robot eerst in 'Mijn bestellingen' in plaats van meteen 'onzeker' te melden.
